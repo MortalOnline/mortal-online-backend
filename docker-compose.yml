@@ -128,22 +128,25 @@ services:
       SPRING_DATASOURCE_USERNAME: auth
       SPRING_DATASOURCE_PASSWORD: auth
       # ------------------------------------------------------------------
-      # SMTP para el codigo 2FA por correo. Sin esto, el codigo sale por el
-      # log del servicio (solo desarrollo).
-      #
-      # EJEMPLO (cuenta remitente "mortalonline.avisos"). OJO: la cuenta debe
-      # EXISTIR en un proveedor real (ej. crearla en Gmail) y la contrasena
-      # debe ser una APP PASSWORD generada por el proveedor — Gmail rechaza
-      # contrasenas normales para SMTP. Nunca subir la contrasena real al
-      # repositorio: pasarla por variable de entorno.
-      #
-      # SPRING_MAIL_HOST: smtp.gmail.com
-      # SPRING_MAIL_PORT: "587"
-      # SPRING_MAIL_USERNAME: mortalonline.avisos@gmail.com
-      # SPRING_MAIL_PASSWORD: ${SMTP_PASSWORD:-12345678}  # <- app password real aqui
-      # SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
-      # SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
+      # SMTP para el codigo 2FA por correo (cuenta remitente de avisos).
+      # IMPORTANTE: Gmail NO acepta la contrasena normal de la cuenta para
+      # SMTP — hay que generar una APP PASSWORD (Cuenta de Google ->
+      # Seguridad -> Verificacion en 2 pasos -> Contrasenas de aplicaciones)
+      # y pasarla por la variable de entorno SMTP_PASSWORD:
+      #   SMTP_PASSWORD=<app-password> docker-compose up
+      # El valor por defecto de abajo es SOLO un ejemplo; si el envio falla,
+      # el codigo queda en el log del auth-service como respaldo.
       # ------------------------------------------------------------------
+      SPRING_MAIL_HOST: smtp.gmail.com
+      SPRING_MAIL_PORT: "587"
+      SPRING_MAIL_USERNAME: mortalonlineavisos@gmail.com
+      SPRING_MAIL_PASSWORD: ${SMTP_PASSWORD:-Cazafantasmas32@}
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
+      # timeouts: si el SMTP no responde, el login no se queda colgado
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_CONNECTIONTIMEOUT: "5000"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_TIMEOUT: "5000"
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_WRITETIMEOUT: "5000"
 
   lobby-service:
     build: ./lobby-service
