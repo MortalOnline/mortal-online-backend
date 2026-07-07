@@ -147,6 +147,10 @@ services:
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_CONNECTIONTIMEOUT: "5000"
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_TIMEOUT: "5000"
       SPRING_MAIL_PROPERTIES_MAIL_SMTP_WRITETIMEOUT: "5000"
+      # confiar en el certificado presentado por smtp.gmail.com aunque un
+      # antivirus/proxy local intercepte el TLS (en un servidor limpio esta
+      # linea se puede quitar)
+      SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST: smtp.gmail.com
 
   lobby-service:
     build: ./lobby-service
