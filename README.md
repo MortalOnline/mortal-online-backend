@@ -70,17 +70,24 @@ Levanta: 4 PostgreSQL (+ 4 réplicas), los 4 microservicios, el API Gateway
 ### Correo (código 2FA)
 
 Para que el código de verificación llegue por correo, configure SMTP en el
-`auth-service` (ver líneas comentadas en `docker-compose.yml`). Ejemplo con
-Gmail (requiere una *app password*):
+`auth-service` (ver líneas comentadas en `docker-compose.yml`). La cuenta
+remitente debe **existir en un proveedor real** y la contraseña debe ser una
+*app password* generada por el proveedor (Gmail rechaza contraseñas normales
+para SMTP). Ejemplo con una cuenta de avisos en Gmail:
 
 ```
 SPRING_MAIL_HOST=smtp.gmail.com
 SPRING_MAIL_PORT=587
-SPRING_MAIL_USERNAME=micuenta@gmail.com
-SPRING_MAIL_PASSWORD=<app-password>
+SPRING_MAIL_USERNAME=mortalonline.avisos@gmail.com
+SPRING_MAIL_PASSWORD=<app-password de 16 caracteres>
 SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
 SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
 ```
+
+Cómo obtener la app password: crear la cuenta en Gmail → Cuenta de Google →
+Seguridad → activar *Verificación en 2 pasos* → *Contraseñas de aplicaciones*
+→ generar una para "Correo". Esa cadena de 16 caracteres es la que va en
+`SPRING_MAIL_PASSWORD` (nunca la suba al repositorio).
 
 **Sin SMTP configurado** (desarrollo), el código se escribe en el **log del
 auth-service** en lugar de enviarse — el flujo completo se puede probar igual.

@@ -47,8 +47,10 @@ public class MailService {
             sender.send(message);
             log.info("Codigo 2FA enviado por correo a {}", to);
         } catch (Exception e) {
-            // no filtrar el codigo en el mensaje de error
-            log.error("No se pudo enviar el correo de 2FA a {}: {}", to, e.getMessage());
+            // SMTP mal configurado o caido: dejar el codigo en el log para que
+            // el operador pueda desbloquear al usuario (no bloquear el login)
+            log.error("No se pudo enviar el correo de 2FA a {} ({}). Codigo de respaldo para {}: {}",
+                    to, e.getMessage(), username, code);
         }
     }
 }
