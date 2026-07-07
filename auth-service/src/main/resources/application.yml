@@ -1,0 +1,22 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: auth-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5433/authdb}
+    username: ${SPRING_DATASOURCE_USERNAME:auth}
+    password: ${SPRING_DATASOURCE_PASSWORD:auth}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+security:
+  jwt:
+    # Secreto HS256 compartido con el gateway y los demas servicios SOLO para
+    # VALIDAR tokens. Auth Service es el unico que los EMITE.
+    secret: ${JWT_SECRET:mortal-online-dev-secret-0123456789abcdef0123456789abcdef}
+    access-ttl-minutes: 60
+    refresh-ttl-days: 7
