@@ -1,0 +1,50 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      routes:
+        # ------------------------------------------------------------------
+        # Rutas REST hacia cada microservicio
+        # ------------------------------------------------------------------
+        - id: auth-service
+          uri: ${AUTH_SERVICE_URL:http://localhost:8081}
+          predicates:
+            - Path=/auth/**
+        - id: lobby-service
+          uri: ${LOBBY_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/lobby/**
+        - id: combat-service
+          uri: ${COMBAT_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/combat/**
+        - id: progress-service
+          uri: ${PROGRESS_SERVICE_URL:http://localhost:8084}
+          predicates:
+            - Path=/progress/**
+        # ------------------------------------------------------------------
+        # WebSocket (STOMP): el gateway propaga el upgrade de conexion. La
+        # autenticacion del socket ocurre en el frame CONNECT de STOMP dentro
+        # de cada servicio (ver JwtChannelInterceptor).
+        # ------------------------------------------------------------------
+        - id: lobby-websocket
+          uri: ${LOBBY_SERVICE_URL:http://localhost:8082}
+          predicates:
+            - Path=/ws/lobby/**
+        - id: combat-websocket
+          uri: ${COMBAT_SERVICE_URL:http://localhost:8083}
+          predicates:
+            - Path=/ws/combat/**
+
+security:
+  jwt:
+    secret: ${JWT_SECRET:mortal-online-dev-secret-0123456789abcdef0123456789abcdef}
+
+rate-limit:
+  # Peticiones por segundo permitidas por IP (limitador en memoria; en
+  # produccion se usaria RequestRateLimiter con Redis)
+  requests-per-second: ${RATE_LIMIT_RPS:50}
