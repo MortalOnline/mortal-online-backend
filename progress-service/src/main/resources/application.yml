@@ -1,0 +1,25 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: progress-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5436/progressdb}
+    username: ${SPRING_DATASOURCE_USERNAME:progress}
+    password: ${SPRING_DATASOURCE_PASSWORD:progress}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+security:
+  jwt:
+    secret: ${JWT_SECRET:mortal-online-dev-secret-0123456789abcdef0123456789abcdef}
+
+progress:
+  # Solo Combat Service conoce este token: garantiza que ningun cliente pueda
+  # reportar resultados directamente (los resultados SIEMPRE pasan por Combat).
+  internal-token: ${INTERNAL_API_TOKEN:mortal-online-internal-dev-token}
+  # Racha de victorias consecutivas necesaria para desbloquear a Reptile
+  reptile-unlock-streak: 3
