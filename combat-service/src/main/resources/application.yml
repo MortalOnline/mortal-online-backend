@@ -1,0 +1,27 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: combat-service
+  main:
+    # web (servlet) + webflux (solo WebClient) conviven: forzar servlet
+    web-application-type: servlet
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5435/combatdb}
+    username: ${SPRING_DATASOURCE_USERNAME:combat}
+    password: ${SPRING_DATASOURCE_PASSWORD:combat}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+security:
+  jwt:
+    secret: ${JWT_SECRET:mortal-online-dev-secret-0123456789abcdef0123456789abcdef}
+
+progress:
+  # Comunicacion sincrona entre microservicios (REST, sin broker): al terminar
+  # una partida, Combat notifica a Progress con este token interno.
+  base-url: ${PROGRESS_SERVICE_URL:http://localhost:8084}
+  internal-token: ${INTERNAL_API_TOKEN:mortal-online-internal-dev-token}
