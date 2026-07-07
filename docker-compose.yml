@@ -1,0 +1,194 @@
+# ============================================================================
+# Mortal Online — Backend de microservicios.
+# Levanta: 4 microservicios + API Gateway + Nginx + 4 bases PostgreSQL,
+# cada una con su replica de lectura (replicacion basica bitnami; en
+# produccion se usaria un servicio gestionado tipo RDS/Cloud SQL).
+#
+#   docker-compose up --build
+# ============================================================================
+
+x-jwt-env: &jwt-env
+  JWT_SECRET: ${JWT_SECRET:-mortal-online-dev-secret-0123456789abcdef0123456789abcdef}
+
+services:
+  # ==========================================================================
+  # BASES DE DATOS — una por microservicio (nunca compartidas) + replica de
+  # lectura. La replica usa replicacion en streaming de bitnami/postgresql;
+  # en produccion esto seria un servicio gestionado con failover automatico.
+  # ==========================================================================
+  auth-db:
+    image: bitnami/postgresql:16
+    environment:
+      POSTGRESQL_USERNAME: auth
+      POSTGRESQL_PASSWORD: auth
+      POSTGRESQL_DATABASE: authdb
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+    ports:
+      - "5433:5432" # expuesto solo para inspeccion en desarrollo
+    volumes:
+      - auth-db-data:/bitnami/postgresql
+
+  auth-db-replica:
+    image: bitnami/postgresql:16
+    depends_on: [auth-db]
+    environment:
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_MASTER_HOST: auth-db
+      POSTGRESQL_MASTER_PORT_NUMBER: 5432
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+      POSTGRESQL_PASSWORD: auth
+
+  lobby-db:
+    image: bitnami/postgresql:16
+    environment:
+      POSTGRESQL_USERNAME: lobby
+      POSTGRESQL_PASSWORD: lobby
+      POSTGRESQL_DATABASE: lobbydb
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+    ports:
+      - "5434:5432"
+    volumes:
+      - lobby-db-data:/bitnami/postgresql
+
+  lobby-db-replica:
+    image: bitnami/postgresql:16
+    depends_on: [lobby-db]
+    environment:
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_MASTER_HOST: lobby-db
+      POSTGRESQL_MASTER_PORT_NUMBER: 5432
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+      POSTGRESQL_PASSWORD: lobby
+
+  combat-db:
+    image: bitnami/postgresql:16
+    environment:
+      POSTGRESQL_USERNAME: combat
+      POSTGRESQL_PASSWORD: combat
+      POSTGRESQL_DATABASE: combatdb
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+    ports:
+      - "5435:5432"
+    volumes:
+      - combat-db-data:/bitnami/postgresql
+
+  combat-db-replica:
+    image: bitnami/postgresql:16
+    depends_on: [combat-db]
+    environment:
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_MASTER_HOST: combat-db
+      POSTGRESQL_MASTER_PORT_NUMBER: 5432
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+      POSTGRESQL_PASSWORD: combat
+
+  progress-db:
+    image: bitnami/postgresql:16
+    environment:
+      POSTGRESQL_USERNAME: progress
+      POSTGRESQL_PASSWORD: progress
+      POSTGRESQL_DATABASE: progressdb
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+    ports:
+      - "5436:5432"
+    volumes:
+      - progress-db-data:/bitnami/postgresql
+
+  progress-db-replica:
+    image: bitnami/postgresql:16
+    depends_on: [progress-db]
+    environment:
+      POSTGRESQL_REPLICATION_MODE: slave
+      POSTGRESQL_MASTER_HOST: progress-db
+      POSTGRESQL_MASTER_PORT_NUMBER: 5432
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+      POSTGRESQL_PASSWORD: progress
+
+  # ==========================================================================
+  # MICROSERVICIOS
+  # ==========================================================================
+  auth-service:
+    build: ./auth-service
+    depends_on: [auth-db]
+    environment:
+      <<: *jwt-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/authdb
+      SPRING_DATASOURCE_USERNAME: auth
+      SPRING_DATASOURCE_PASSWORD: auth
+
+  lobby-service:
+    build: ./lobby-service
+    depends_on: [lobby-db]
+    environment:
+      <<: *jwt-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://lobby-db:5432/lobbydb
+      SPRING_DATASOURCE_USERNAME: lobby
+      SPRING_DATASOURCE_PASSWORD: lobby
+
+  combat-service:
+    build: ./combat-service
+    depends_on: [combat-db]
+    environment:
+      <<: *jwt-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://combat-db:5432/combatdb
+      SPRING_DATASOURCE_USERNAME: combat
+      SPRING_DATASOURCE_PASSWORD: combat
+      PROGRESS_SERVICE_URL: http://progress-service:8084
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-mortal-online-internal-dev-token}
+
+  progress-service:
+    build: ./progress-service
+    depends_on: [progress-db]
+    environment:
+      <<: *jwt-env
+      SPRING_DATASOURCE_URL: jdbc:postgresql://progress-db:5432/progressdb
+      SPRING_DATASOURCE_USERNAME: progress
+      SPRING_DATASOURCE_PASSWORD: progress
+      INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-mortal-online-internal-dev-token}
+
+  # ==========================================================================
+  # API GATEWAY (Spring Cloud Gateway) — enruta hacia los microservicios y
+  # valida el JWT antes de enrutar. Para escalar horizontalmente, duplicar
+  # este servicio (api-gateway-2) y descomentar el upstream en nginx.conf.
+  # ==========================================================================
+  api-gateway:
+    build: ./api-gateway
+    depends_on: [auth-service, lobby-service, combat-service, progress-service]
+    environment:
+      <<: *jwt-env
+      AUTH_SERVICE_URL: http://auth-service:8081
+      LOBBY_SERVICE_URL: http://lobby-service:8082
+      COMBAT_SERVICE_URL: http://combat-service:8083
+      PROGRESS_SERVICE_URL: http://progress-service:8084
+    ports:
+      - "8080:8080" # acceso directo en desarrollo (en produccion solo Nginx)
+
+  # ==========================================================================
+  # NGINX — punto de entrada unico (balanceador de carga).
+  # ==========================================================================
+  nginx:
+    image: nginx:1.27-alpine
+    depends_on: [api-gateway]
+    ports:
+      - "80:80"
+      # - "443:443" # HTTPS en produccion (ver nginx.conf)
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+
+volumes:
+  auth-db-data:
+  lobby-db-data:
+  combat-db-data:
+  progress-db-data:
