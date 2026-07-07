@@ -1,0 +1,24 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: lobby-service
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5434/lobbydb}
+    username: ${SPRING_DATASOURCE_USERNAME:lobby}
+    password: ${SPRING_DATASOURCE_PASSWORD:lobby}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+security:
+  jwt:
+    # Solo VALIDA tokens emitidos por Auth Service (mismo secreto HS256).
+    secret: ${JWT_SECRET:mortal-online-dev-secret-0123456789abcdef0123456789abcdef}
+
+lobby:
+  # Ventana de reconexion: si un jugador pierde el WebSocket, conserva su
+  # puesto en la sala durante este tiempo antes de expulsarlo.
+  reconnect-window-seconds: 5
