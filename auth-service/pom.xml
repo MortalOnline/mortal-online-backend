@@ -15,7 +15,7 @@
   <artifactId>auth-service</artifactId>
   <version>1.0.0</version>
   <name>auth-service</name>
-  <description>Autenticacion de Mortal Online: registro, login, 2FA (TOTP) y JWT</description>
+  <description>Autenticacion de Mortal Online: registro, login, 2FA por correo y JWT</description>
 
   <properties>
     <java.version>17</java.version>
@@ -59,16 +59,10 @@
       <scope>runtime</scope>
     </dependency>
 
-    <!-- TOTP (2FA) -->
+    <!-- 2FA por correo: envio del codigo de verificacion via SMTP -->
     <dependency>
-      <groupId>com.eatthepath</groupId>
-      <artifactId>java-otp</artifactId>
-      <version>0.4.0</version>
-    </dependency>
-    <dependency>
-      <groupId>commons-codec</groupId>
-      <artifactId>commons-codec</artifactId>
-      <version>1.17.1</version>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-mail</artifactId>
     </dependency>
   </dependencies>
 

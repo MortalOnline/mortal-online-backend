@@ -127,6 +127,16 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/authdb
       SPRING_DATASOURCE_USERNAME: auth
       SPRING_DATASOURCE_PASSWORD: auth
+      # ------------------------------------------------------------------
+      # SMTP para el codigo 2FA por correo. Sin esto, el codigo sale por el
+      # log del servicio (solo desarrollo). Ejemplo con Gmail (app password):
+      # SPRING_MAIL_HOST: smtp.gmail.com
+      # SPRING_MAIL_PORT: "587"
+      # SPRING_MAIL_USERNAME: micuenta@gmail.com
+      # SPRING_MAIL_PASSWORD: ${SMTP_PASSWORD}
+      # SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
+      # SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
+      # ------------------------------------------------------------------
 
   lobby-service:
     build: ./lobby-service

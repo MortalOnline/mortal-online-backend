@@ -37,9 +37,11 @@ Cliente (Phaser + React)
 ## Seguridad
 
 - **Auth Service es la única fuente de identidad**: solo él valida contraseñas
-  (BCrypt, 12 rounds) y emite JWT. El **2FA (TOTP) es obligatorio**: el login
-  con contraseña correcta devuelve un token temporal (scope `2fa`); el JWT de
-  acceso solo se emite tras `verify-2fa`.
+  (BCrypt, 12 rounds) y emite JWT. El **2FA por correo es obligatorio**: el
+  login con contraseña correcta envía un **código de 6 dígitos al correo
+  registrado** (expira en 10 min, un solo uso, máx. 5 intentos) y devuelve un
+  token temporal (scope `2fa`); el JWT de acceso solo se emite tras
+  `verify-2fa` con el código correcto.
 - El **Gateway valida el JWT** en todas las rutas excepto
   `/auth/register|login|verify-2fa|refresh` (y el handshake `/ws/**`, que se
   autentica en el frame CONNECT de STOMP). Cada microservicio **vuelve a
@@ -65,6 +67,24 @@ Levanta: 4 PostgreSQL (+ 4 réplicas), los 4 microservicios, el API Gateway
 > En producción defina `JWT_SECRET` e `INTERNAL_API_TOKEN` como variables de
 > entorno (los valores por defecto son SOLO de desarrollo).
 
+### Correo (código 2FA)
+
+Para que el código de verificación llegue por correo, configure SMTP en el
+`auth-service` (ver líneas comentadas en `docker-compose.yml`). Ejemplo con
+Gmail (requiere una *app password*):
+
+```
+SPRING_MAIL_HOST=smtp.gmail.com
+SPRING_MAIL_PORT=587
+SPRING_MAIL_USERNAME=micuenta@gmail.com
+SPRING_MAIL_PASSWORD=<app-password>
+SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH=true
+SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE=true
+```
+
+**Sin SMTP configurado** (desarrollo), el código se escribe en el **log del
+auth-service** en lugar de enviarse — el flujo completo se puede probar igual.
+
 ## Probar el flujo completo
 
 ### 1. Registro
@@ -75,9 +95,6 @@ curl -s -X POST http://localhost/auth/register \
   -d '{"username":"subzero","email":"subzero@earthrealm.com","password":"secreta1"}'
 ```
 
-Respuesta: incluye `totpSecret` y `otpauthUrl`. Registre el secreto en
-Google Authenticator (o genere códigos por CLI con `oathtool --totp -b <secret>`).
-
 ### 2. Login (paso 1: contraseña)
 
 ```bash
@@ -86,15 +103,17 @@ curl -s -X POST http://localhost/auth/login \
   -d '{"username":"subzero","password":"secreta1"}'
 ```
 
-Respuesta: `{"twoFactorRequired":true,"pendingToken":"..."}` — todavía **no**
-hay JWT.
+Respuesta: `{"twoFactorRequired":true,"pendingToken":"...","emailHint":"s•••@earthrealm.com"}`
+— todavía **no** hay JWT. En ese momento llega el **código de 6 dígitos al
+correo registrado** (sin SMTP configurado, búsquelo en el log del
+auth-service: `docker-compose logs auth-service | grep "Codigo 2FA"`).
 
-### 3. Login (paso 2: código 2FA)
+### 3. Login (paso 2: código del correo)
 
 ```bash
 curl -s -X POST http://localhost/auth/verify-2fa \
   -H "Content-Type: application/json" \
-  -d '{"pendingToken":"<pendingToken>","code":"<código de 6 dígitos>"}'
+  -d '{"pendingToken":"<pendingToken>","code":"<código del correo>"}'
 ```
 
 Respuesta: `{"accessToken":"...","refreshToken":"..."}`. Exporte el token:

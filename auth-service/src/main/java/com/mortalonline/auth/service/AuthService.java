@@ -1,7 +1,9 @@
 package com.mortalonline.auth.service;
 
+import com.mortalonline.auth.entity.EmailOtp;
 import com.mortalonline.auth.entity.RefreshToken;
 import com.mortalonline.auth.entity.User;
+import com.mortalonline.auth.repository.EmailOtpRepository;
 import com.mortalonline.auth.repository.RefreshTokenRepository;
 import com.mortalonline.auth.repository.UserRepository;
 import com.mortalonline.auth.web.Dtos;
@@ -20,31 +22,40 @@ import java.time.Instant;
 import java.util.Base64;
 
 /**
- * Flujo de autenticacion completo:
- *   register -> login (contrasena, BCrypt) -> verify-2fa (TOTP) -> JWT.
- * El 2FA es OBLIGATORIO: el login con contrasena correcta nunca emite el JWT
- * final, solo un token temporal con scope "2fa".
+ * Flujo de autenticacion completo (verificacion de dos pasos por CORREO):
+ *   register (correo + contrasena BCrypt)
+ *   -> login: si la contrasena es correcta, se ENVIA UN CODIGO DE 6 DIGITOS
+ *      al correo registrado (no se emite el JWT todavia)
+ *   -> verify-2fa: valida el codigo recibido por correo y emite el JWT.
+ * El codigo expira, es de un solo uso y admite maximo 5 intentos.
  */
 @Service
 public class AuthService {
 
+    private static final int MAX_OTP_ATTEMPTS = 5;
+
     private final UserRepository users;
     private final RefreshTokenRepository refreshTokens;
+    private final EmailOtpRepository otps;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwt;
-    private final TotpService totp;
+    private final MailService mail;
     private final Duration refreshTtl;
+    private final Duration otpTtl;
     private final SecureRandom random = new SecureRandom();
 
-    public AuthService(UserRepository users, RefreshTokenRepository refreshTokens,
-                       PasswordEncoder passwordEncoder, JwtService jwt, TotpService totp,
-                       @Value("${security.jwt.refresh-ttl-days:7}") long refreshTtlDays) {
+    public AuthService(UserRepository users, RefreshTokenRepository refreshTokens, EmailOtpRepository otps,
+                       PasswordEncoder passwordEncoder, JwtService jwt, MailService mail,
+                       @Value("${security.jwt.refresh-ttl-days:7}") long refreshTtlDays,
+                       @Value("${security.otp.ttl-minutes:10}") long otpTtlMinutes) {
         this.users = users;
         this.refreshTokens = refreshTokens;
+        this.otps = otps;
         this.passwordEncoder = passwordEncoder;
         this.jwt = jwt;
-        this.totp = totp;
+        this.mail = mail;
         this.refreshTtl = Duration.ofDays(refreshTtlDays);
+        this.otpTtl = Duration.ofMinutes(otpTtlMinutes);
     }
 
     @Transactional
@@ -64,26 +75,31 @@ public class AuthService {
         if (users.existsByEmail(req.email())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El correo ya esta registrado");
         }
-        String secret = totp.generateSecret();
-        User user = new User(req.username().trim(), req.email(), passwordEncoder.encode(req.password()), secret);
-        user = users.save(user);
-        // El secreto TOTP se entrega UNA sola vez para configurar la app de
-        // autenticacion; no vuelve a exponerse por ningun endpoint.
-        return new Dtos.RegisterResponse(user.getId(), user.getUsername(), secret,
-                totp.otpauthUrl(user.getUsername(), secret));
+        User user = users.save(new User(req.username().trim(), req.email(), passwordEncoder.encode(req.password())));
+        return new Dtos.RegisterResponse(user.getId(), user.getUsername(), user.getEmail());
     }
 
-    @Transactional(readOnly = true)
+    /**
+     * Paso 1 del login: valida la contrasena y, si es correcta, envia el
+     * codigo de verificacion AL CORREO registrado. El JWT NO se emite aqui.
+     */
+    @Transactional
     public Dtos.LoginResponse login(Dtos.LoginRequest req) {
         User user = users.findByUsername(req.username() == null ? "" : req.username())
                 .orElseThrow(AuthService::badCredentials);
         if (!passwordEncoder.matches(req.password() == null ? "" : req.password(), user.getPasswordHash())) {
             throw badCredentials();
         }
-        // Contrasena correcta: NO se emite el JWT todavia, se exige el 2FA.
-        return new Dtos.LoginResponse(true, jwt.createPending2faToken(user.getId(), user.getUsername()));
+        String code = String.format("%06d", random.nextInt(1_000_000));
+        otps.deleteByUserId(user.getId()); // un solo codigo vigente por usuario
+        otps.save(new EmailOtp(user.getId(), code, Instant.now().plus(otpTtl)));
+        mail.sendLoginCode(user.getEmail(), user.getUsername(), code, otpTtl.toMinutes());
+        return new Dtos.LoginResponse(true,
+                jwt.createPending2faToken(user.getId(), user.getUsername()),
+                maskEmail(user.getEmail()));
     }
 
+    /** Paso 2: valida el codigo que llego al correo y emite el JWT. */
     @Transactional
     public Dtos.TokenResponse verify2fa(Dtos.Verify2faRequest req) {
         Claims claims = parseOrUnauthorized(req.pendingToken());
@@ -92,10 +108,24 @@ public class AuthService {
         }
         User user = users.findById(Long.valueOf(claims.getSubject()))
                 .orElseThrow(AuthService::badCredentials);
-        if (!totp.verify(user.getTotpSecret(), req.code())) {
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Codigo 2FA incorrecto");
+
+        EmailOtp otp = otps.findFirstByUserIdOrderByIdDesc(user.getId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
+                        "No hay un codigo vigente; inicia sesion de nuevo"));
+        if (otp.getExpiresAt().isBefore(Instant.now())) {
+            otps.delete(otp);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "El codigo expiro; inicia sesion de nuevo");
         }
-        if (!user.isTotpEnabled()) user.setTotpEnabled(true);
+        if (otp.getAttempts() >= MAX_OTP_ATTEMPTS) {
+            otps.delete(otp);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Demasiados intentos; inicia sesion de nuevo");
+        }
+        if (req.code() == null || !otp.getCode().equals(req.code().trim())) {
+            otp.registerFailedAttempt();
+            otps.save(otp);
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Codigo incorrecto");
+        }
+        otps.delete(otp); // un solo uso
         return issueTokens(user);
     }
 
@@ -116,7 +146,7 @@ public class AuthService {
     public Dtos.MeResponse me(Long userId) {
         User user = users.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Usuario no encontrado"));
-        return new Dtos.MeResponse(user.getId(), user.getUsername(), user.getEmail(), user.isTotpEnabled());
+        return new Dtos.MeResponse(user.getId(), user.getUsername(), user.getEmail());
     }
 
     private Dtos.TokenResponse issueTokens(User user) {
@@ -127,6 +157,13 @@ public class AuthService {
         return new Dtos.TokenResponse(
                 jwt.createAccessToken(user.getId(), user.getUsername()),
                 refreshValue, "Bearer", jwt.accessTtlSeconds());
+    }
+
+    /** "juan.gomez@mail.com" -> "j•••@mail.com" (pista sin exponer el correo). */
+    private static String maskEmail(String email) {
+        int at = email.indexOf('@');
+        if (at <= 1) return "•••" + email.substring(Math.max(at, 0));
+        return email.charAt(0) + "•••" + email.substring(at);
     }
 
     private Claims parseOrUnauthorized(String token) {
