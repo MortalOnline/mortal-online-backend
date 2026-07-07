@@ -22,6 +22,8 @@ public class SecurityConfig {
                         // usuario; lo protege el token interno que valida el controller
                         // (solo Combat Service lo conoce).
                         .requestMatchers("/progress/matches-completed").permitAll()
+                        // dispatch interno de errores (evita 403 vacios)
+                        .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();

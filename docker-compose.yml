@@ -17,7 +17,7 @@ services:
   # en produccion esto seria un servicio gestionado con failover automatico.
   # ==========================================================================
   auth-db:
-    image: bitnami/postgresql:16
+    image: bitnamilegacy/postgresql:16
     environment:
       POSTGRESQL_USERNAME: auth
       POSTGRESQL_PASSWORD: auth
@@ -31,7 +31,7 @@ services:
       - auth-db-data:/bitnami/postgresql
 
   auth-db-replica:
-    image: bitnami/postgresql:16
+    image: bitnamilegacy/postgresql:16
     depends_on: [auth-db]
     environment:
       POSTGRESQL_REPLICATION_MODE: slave
@@ -42,7 +42,7 @@ services:
       POSTGRESQL_PASSWORD: auth
 
   lobby-db:
-    image: bitnami/postgresql:16
+    image: bitnamilegacy/postgresql:16
     environment:
       POSTGRESQL_USERNAME: lobby
       POSTGRESQL_PASSWORD: lobby
@@ -56,7 +56,7 @@ services:
       - lobby-db-data:/bitnami/postgresql
 
   lobby-db-replica:
-    image: bitnami/postgresql:16
+    image: bitnamilegacy/postgresql:16
     depends_on: [lobby-db]
     environment:
       POSTGRESQL_REPLICATION_MODE: slave
@@ -67,7 +67,7 @@ services:
       POSTGRESQL_PASSWORD: lobby
 
   combat-db:
-    image: bitnami/postgresql:16
+    image: bitnamilegacy/postgresql:16
     environment:
       POSTGRESQL_USERNAME: combat
       POSTGRESQL_PASSWORD: combat
@@ -81,7 +81,7 @@ services:
       - combat-db-data:/bitnami/postgresql
 
   combat-db-replica:
-    image: bitnami/postgresql:16
+    image: bitnamilegacy/postgresql:16
     depends_on: [combat-db]
     environment:
       POSTGRESQL_REPLICATION_MODE: slave
@@ -92,7 +92,7 @@ services:
       POSTGRESQL_PASSWORD: combat
 
   progress-db:
-    image: bitnami/postgresql:16
+    image: bitnamilegacy/postgresql:16
     environment:
       POSTGRESQL_USERNAME: progress
       POSTGRESQL_PASSWORD: progress
@@ -106,7 +106,7 @@ services:
       - progress-db-data:/bitnami/postgresql
 
   progress-db-replica:
-    image: bitnami/postgresql:16
+    image: bitnamilegacy/postgresql:16
     depends_on: [progress-db]
     environment:
       POSTGRESQL_REPLICATION_MODE: slave

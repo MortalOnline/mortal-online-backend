@@ -21,6 +21,8 @@ public class SecurityConfig {
                         // El handshake del WebSocket no lleva header Authorization;
                         // la autenticacion ocurre en el CONNECT de STOMP.
                         .requestMatchers("/ws/**").permitAll()
+                        // dispatch interno de errores (evita 403 vacios)
+                        .requestMatchers("/error").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
         return http.build();
