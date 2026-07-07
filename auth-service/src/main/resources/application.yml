@@ -1,5 +1,9 @@
 server:
   port: 8081
+  error:
+    # incluir el mensaje de ResponseStatusException en el JSON de error para
+    # que el cliente pueda mostrarlo (Spring Boot 3 lo oculta por defecto)
+    include-message: always
 
 spring:
   application:
