@@ -42,3 +42,17 @@ security:
     ttl-minutes: 10
     # remitente de los correos (por defecto, el usuario SMTP)
     mail-from: ${MAIL_FROM:${SPRING_MAIL_USERNAME:no-reply@mortalonline.gg}}
+
+# ----------------------------------------------------------------------------
+# Correo por API HTTP en la nube (Brevo) — VIA RECOMENDADA: viaja por HTTPS
+# (443), que no esta bloqueado en redes universitarias (el SMTP saliente si
+# suele estarlo). Crear cuenta gratis en brevo.com, verificar el remitente y
+# generar la clave (xkeysib-...). Si la clave esta vacia, se intenta SMTP y,
+# en ultima instancia, el codigo queda en el log.
+# ----------------------------------------------------------------------------
+mail:
+  api:
+    key: ${BREVO_API_KEY:}
+    url: ${MAIL_API_URL:https://api.brevo.com/v3/smtp/email}
+    # SOLO desarrollo: true en maquinas con antivirus/proxy que intercepta TLS
+    insecure-trust: ${MAIL_API_INSECURE_TRUST:false}

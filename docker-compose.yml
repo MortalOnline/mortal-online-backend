@@ -128,7 +128,15 @@ services:
       SPRING_DATASOURCE_USERNAME: auth
       SPRING_DATASOURCE_PASSWORD: auth
       # ------------------------------------------------------------------
-      # SMTP para el codigo 2FA por correo (cuenta remitente de avisos).
+      # CORREO 2FA — VIA RECOMENDADA: API HTTP de Brevo (HTTPS 443, funciona
+      # en redes universitarias que bloquean SMTP). Cuenta gratis en
+      # brevo.com -> verificar remitente -> generar clave (xkeysib-...):
+      #   BREVO_API_KEY=xkeysib-... docker-compose up
+      # ------------------------------------------------------------------
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      MAIL_FROM: mortalonlineavisos@gmail.com
+      # ------------------------------------------------------------------
+      # SMTP (alternativa si la red lo permite; cuenta remitente de avisos).
       # IMPORTANTE: Gmail NO acepta la contrasena normal de la cuenta para
       # SMTP — hay que generar una APP PASSWORD (Cuenta de Google ->
       # Seguridad -> Verificacion en 2 pasos -> Contrasenas de aplicaciones)

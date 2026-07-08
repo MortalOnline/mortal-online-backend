@@ -69,11 +69,23 @@ Levanta: 4 PostgreSQL (+ 4 réplicas), los 4 microservicios, el API Gateway
 
 ### Correo (código 2FA)
 
-Para que el código de verificación llegue por correo, configure SMTP en el
-`auth-service` (ver líneas comentadas en `docker-compose.yml`). La cuenta
-remitente debe **existir en un proveedor real** y la contraseña debe ser una
-*app password* generada por el proveedor (Gmail rechaza contraseñas normales
-para SMTP). Ejemplo con una cuenta de avisos en Gmail:
+El envío tiene **tres vías en orden de prioridad**:
+
+**1. API HTTP en la nube (Brevo) — recomendada.** Viaja por HTTPS (puerto
+443), que no está bloqueado en ninguna red; el SMTP saliente (587/465) **sí
+suele estar bloqueado en redes universitarias/corporativas** como antispam.
+Pasos: cuenta gratis en [brevo.com](https://www.brevo.com) (300 correos/día)
+→ *Senders & IP* → verificar el remitente (`mortalonlineavisos@gmail.com`)
+→ *SMTP & API* → generar una **API key** (`xkeysib-...`) y pasarla al
+levantar:
+
+```
+BREVO_API_KEY=xkeysib-... docker-compose up
+```
+
+**2. SMTP clásico (alternativa).** Solo si la red permite el puerto 587. La
+cuenta remitente debe **existir en un proveedor real** y la contraseña debe
+ser una *app password* (Gmail rechaza contraseñas normales para SMTP):
 
 ```
 SPRING_MAIL_HOST=smtp.gmail.com
@@ -89,8 +101,10 @@ Seguridad → activar *Verificación en 2 pasos* → *Contraseñas de aplicacion
 → generar una para "Correo". Esa cadena de 16 caracteres es la que va en
 `SPRING_MAIL_PASSWORD` (nunca la suba al repositorio).
 
-**Sin SMTP configurado** (desarrollo), el código se escribe en el **log del
-auth-service** en lugar de enviarse — el flujo completo se puede probar igual.
+**3. Respaldo (desarrollo/emergencia).** Si las dos vías anteriores fallan o
+no están configuradas, el código queda en el **log del auth-service**
+(`docker-compose logs auth-service | grep "Codigo"`) — el flujo nunca se
+bloquea.
 
 ## Probar el flujo completo
 
