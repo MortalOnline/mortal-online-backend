@@ -42,4 +42,10 @@ public class AuthController {
     public Dtos.MeResponse me(Principal principal) {
         return auth.me(Long.valueOf(principal.getName()));
     }
+
+    /** Nombres publicos por id, ej. /auth/users?ids=1,2,3 (requiere JWT). */
+    @GetMapping("/users")
+    public java.util.List<Dtos.UserSummary> users(@RequestParam("ids") java.util.List<Long> ids) {
+        return auth.usersByIds(ids);
+    }
 }

@@ -149,6 +149,15 @@ public class AuthService {
         return new Dtos.MeResponse(user.getId(), user.getUsername(), user.getEmail());
     }
 
+    /** Nombres publicos por id (scoreboard/salas). Solo id y username. */
+    @Transactional(readOnly = true)
+    public java.util.List<Dtos.UserSummary> usersByIds(java.util.List<Long> ids) {
+        if (ids == null || ids.isEmpty() || ids.size() > 100) return java.util.List.of();
+        return users.findAllById(ids).stream()
+                .map(u -> new Dtos.UserSummary(u.getId(), u.getUsername()))
+                .toList();
+    }
+
     private Dtos.TokenResponse issueTokens(User user) {
         byte[] bytes = new byte[32];
         random.nextBytes(bytes);

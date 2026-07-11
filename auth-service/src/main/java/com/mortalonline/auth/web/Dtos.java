@@ -33,4 +33,8 @@ public final class Dtos {
 
     public record MeResponse(Long id, String username, String email) {
     }
+
+    /** Nombre publico de un usuario (para el scoreboard y las salas). */
+    public record UserSummary(Long id, String username) {
+    }
 }
