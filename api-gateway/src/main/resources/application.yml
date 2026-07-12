@@ -48,3 +48,13 @@ rate-limit:
   # Peticiones por segundo permitidas por IP (limitador en memoria; en
   # produccion se usaria RequestRateLimiter con Redis)
   requests-per-second: ${RATE_LIMIT_RPS:50}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health # /actuator/health para el health check del balanceador
+  endpoint:
+    health:
+      probes:
+        enabled: true
