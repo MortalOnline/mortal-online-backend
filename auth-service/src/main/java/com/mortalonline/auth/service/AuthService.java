@@ -40,12 +40,14 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwt;
     private final MailService mail;
+    private final LoginAttemptService loginAttempts;
     private final Duration refreshTtl;
     private final Duration otpTtl;
     private final SecureRandom random = new SecureRandom();
 
     public AuthService(UserRepository users, RefreshTokenRepository refreshTokens, EmailOtpRepository otps,
                        PasswordEncoder passwordEncoder, JwtService jwt, MailService mail,
+                       LoginAttemptService loginAttempts,
                        @Value("${security.jwt.refresh-ttl-days:7}") long refreshTtlDays,
                        @Value("${security.otp.ttl-minutes:10}") long otpTtlMinutes) {
         this.users = users;
@@ -54,6 +56,7 @@ public class AuthService {
         this.passwordEncoder = passwordEncoder;
         this.jwt = jwt;
         this.mail = mail;
+        this.loginAttempts = loginAttempts;
         this.refreshTtl = Duration.ofDays(refreshTtlDays);
         this.otpTtl = Duration.ofMinutes(otpTtlMinutes);
     }
@@ -85,11 +88,18 @@ public class AuthService {
      */
     @Transactional
     public Dtos.LoginResponse login(Dtos.LoginRequest req) {
+        // anti fuerza-bruta: cuenta bloqueada temporalmente tras N fallos
+        loginAttempts.checkNotLocked(req.username());
         User user = users.findByUsername(req.username() == null ? "" : req.username())
-                .orElseThrow(AuthService::badCredentials);
+                .orElseThrow(() -> {
+                    loginAttempts.recordFailure(req.username());
+                    return badCredentials();
+                });
         if (!passwordEncoder.matches(req.password() == null ? "" : req.password(), user.getPasswordHash())) {
+            loginAttempts.recordFailure(req.username());
             throw badCredentials();
         }
+        loginAttempts.reset(req.username()); // contraseña correcta
         String code = String.format("%06d", random.nextInt(1_000_000));
         otps.deleteByUserId(user.getId()); // un solo codigo vigente por usuario
         otps.save(new EmailOtp(user.getId(), code, Instant.now().plus(otpTtl)));

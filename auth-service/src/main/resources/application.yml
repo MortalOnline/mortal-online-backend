@@ -37,6 +37,11 @@ security:
     secret: ${JWT_SECRET:mortal-online-dev-secret-0123456789abcdef0123456789abcdef}
     access-ttl-minutes: 60
     refresh-ttl-days: 7
+  # anti fuerza-bruta: bloqueo temporal POR CUENTA tras intentos fallidos
+  # (complementa el rate limiting por IP del gateway)
+  lockout:
+    max-attempts: 5
+    minutes: 15
   otp:
     # vigencia del codigo de verificacion enviado por correo
     ttl-minutes: 10

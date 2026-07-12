@@ -64,8 +64,11 @@ Levanta: 4 PostgreSQL (+ 4 réplicas), los 4 microservicios, el API Gateway
 (`:8080`) y Nginx (`:80`). Todo el tráfico del cliente entra por Nginx:
 `http://localhost/`.
 
-> En producción defina `JWT_SECRET` e `INTERNAL_API_TOKEN` como variables de
-> entorno (los valores por defecto son SOLO de desarrollo).
+> **Secretos (obligatorio en despliegues reales):** copie `.env.example` a
+> `.env` y reemplace todos los valores (docker-compose carga `.env`
+> automáticamente; está en `.gitignore`). Los valores por defecto del código
+> son SOLO de desarrollo — como este repositorio es público, desplegar sin
+> sobreescribirlos permitiría a cualquiera forjar JWTs válidos.
 
 ### Correo (código 2FA)
 
