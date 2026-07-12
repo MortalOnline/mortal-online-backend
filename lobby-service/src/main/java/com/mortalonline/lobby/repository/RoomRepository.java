@@ -7,4 +7,5 @@ import java.util.List;
 
 public interface RoomRepository extends JpaRepository<Room, Long> {
     List<Room> findByStatusInOrderByCreatedAtDesc(List<Room.Status> statuses);
+    List<Room> findByCreatedAtBefore(java.time.Instant cutoff);
 }

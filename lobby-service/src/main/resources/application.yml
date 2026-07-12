@@ -24,3 +24,6 @@ lobby:
   # Ventana de reconexion: si un jugador pierde el WebSocket, conserva su
   # puesto en la sala durante este tiempo antes de expulsarlo.
   reconnect-window-seconds: 5
+  # Tiempo de vida de una sala: pasado este tiempo se borra automaticamente
+  # (con sus jugadores y chat), este ocupada o no.
+  room-ttl-minutes: ${LOBBY_ROOM_TTL_MINUTES:30}

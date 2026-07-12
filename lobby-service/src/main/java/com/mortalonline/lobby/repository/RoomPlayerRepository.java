@@ -12,4 +12,5 @@ public interface RoomPlayerRepository extends JpaRepository<RoomPlayer, Long> {
     Optional<RoomPlayer> findFirstByUserIdOrderByJoinedAtDesc(Long userId);
     boolean existsByRoomIdAndUserId(Long roomId, Long userId);
     void deleteByRoomIdAndUserId(Long roomId, Long userId);
+    void deleteByRoomId(Long roomId);
 }

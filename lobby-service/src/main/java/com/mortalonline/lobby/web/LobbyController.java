@@ -33,4 +33,18 @@ public class LobbyController {
     public Dtos.RoomView join(@PathVariable Long id, Principal principal) {
         return lobby.join(id, Long.valueOf(principal.getName()));
     }
+
+    /** Salida EXPLICITA de la sala (libera el cupo de inmediato). */
+    @PostMapping("/rooms/{id}/leave")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void leave(@PathVariable Long id, Principal principal) {
+        lobby.removePlayer(id, Long.valueOf(principal.getName()));
+    }
+
+    /** Borra la sala (solo el creador). */
+    @DeleteMapping("/rooms/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(@PathVariable Long id, Principal principal) {
+        lobby.deleteRoom(id, Long.valueOf(principal.getName()));
+    }
 }

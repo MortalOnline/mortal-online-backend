@@ -2,6 +2,7 @@ package com.mortalonline.lobby.service;
 
 import com.mortalonline.lobby.entity.Room;
 import com.mortalonline.lobby.entity.RoomPlayer;
+import com.mortalonline.lobby.repository.ChatMessageRepository;
 import com.mortalonline.lobby.repository.RoomPlayerRepository;
 import com.mortalonline.lobby.repository.RoomRepository;
 import com.mortalonline.lobby.web.Dtos;
@@ -24,11 +25,14 @@ public class LobbyService {
 
     private final RoomRepository rooms;
     private final RoomPlayerRepository players;
+    private final ChatMessageRepository messages;
     private final SimpMessagingTemplate broker;
 
-    public LobbyService(RoomRepository rooms, RoomPlayerRepository players, SimpMessagingTemplate broker) {
+    public LobbyService(RoomRepository rooms, RoomPlayerRepository players,
+                        ChatMessageRepository messages, SimpMessagingTemplate broker) {
         this.rooms = rooms;
         this.players = players;
+        this.messages = messages;
         this.broker = broker;
     }
 
@@ -77,13 +81,31 @@ public class LobbyService {
                 room.getHostUserId(), count, room.getMaxPlayers());
     }
 
-    /** Expulsa a un jugador (usado al vencer la ventana de reconexion). */
+    /**
+     * Saca a un jugador de la sala: salida EXPLICITA (boton "Salir") o al
+     * vencer la ventana de reconexion. Si la sala queda vacia, se elimina.
+     */
     @Transactional
     public void removePlayer(Long roomId, Long userId) {
         players.deleteByRoomIdAndUserId(roomId, userId);
         if (players.countByRoomId(roomId) == 0) {
+            messages.deleteByRoomId(roomId);
             rooms.deleteById(roomId); // sala vacia: se cierra
         }
+        broadcastRooms();
+    }
+
+    /** Borra la sala completa (solo el CREADOR puede hacerlo). */
+    @Transactional
+    public void deleteRoom(Long roomId, Long userId) {
+        Room room = rooms.findById(roomId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "La sala no existe"));
+        if (!room.getHostUserId().equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el creador puede borrar la sala");
+        }
+        players.deleteByRoomId(roomId);
+        messages.deleteByRoomId(roomId);
+        rooms.delete(room);
         broadcastRooms();
     }
 
