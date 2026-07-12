@@ -56,13 +56,26 @@ Cliente (Phaser + React)
 
 Requisitos: Docker + Docker Compose.
 
+**Desarrollo local** (carga `docker-compose.override.yml` automáticamente —
+publica las bases en 5433-5436 para inspección y para servicios corriendo
+fuera de Docker):
+
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
-Levanta: 4 PostgreSQL (+ 4 réplicas), los 4 microservicios, el API Gateway
-(`:8080`) y Nginx (`:80`). Todo el tráfico del cliente entra por Nginx:
-`http://localhost/`.
+**Producción** (VM detrás de un ALB — solo se publica el gateway `:8080`;
+las bases y los servicios internos no tocan la red del host; Nginx no se
+levanta porque el ALB lo reemplaza):
+
+```bash
+docker compose -f docker-compose.yml up --build -d
+```
+
+Opcionales por perfil: `--profile replicas` (réplicas de lectura de
+PostgreSQL; evitarlas en VMs de 4GB) y `--profile local-lb` (Nginx local
+en `:80`, solo para entornos sin ALB). Health check del balanceador:
+`GET /actuator/health` en el gateway.
 
 > **Secretos (obligatorio en despliegues reales):** copie `.env.example` a
 > `.env` y reemplace todos los valores (docker-compose carga `.env`

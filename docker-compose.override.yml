@@ -1,0 +1,29 @@
+# ============================================================================
+# Overrides de DESARROLLO — Docker Compose carga este archivo AUTOMATICAMENTE
+# cuando se corre `docker compose up` a secas (sin -f).
+#
+# Publica las bases de datos al host (5433-5436) para inspeccion local y para
+# que los servicios corran fuera de Docker (mvn spring-boot:run / java -jar)
+# puedan conectarse por localhost.
+#
+# EN PRODUCCION NO APLICA: alli se corre con el archivo base explicito
+#   docker compose -f docker-compose.yml up --build -d
+# y ningun puerto de base de datos queda expuesto.
+# ============================================================================
+
+services:
+  auth-db:
+    ports:
+      - "5433:5432"
+
+  lobby-db:
+    ports:
+      - "5434:5432"
+
+  combat-db:
+    ports:
+      - "5435:5432"
+
+  progress-db:
+    ports:
+      - "5436:5432"

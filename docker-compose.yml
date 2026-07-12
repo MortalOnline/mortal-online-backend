@@ -1,23 +1,40 @@
 # ============================================================================
-# Mortal Online — Backend de microservicios.
-# Levanta: 4 microservicios + API Gateway + Nginx + 4 bases PostgreSQL,
-# cada una con su replica de lectura (replicacion basica bitnami; en
-# produccion se usaria un servicio gestionado tipo RDS/Cloud SQL).
+# Mortal Online — Backend de microservicios (archivo BASE, apto produccion).
 #
-#   docker-compose up --build
+# PRODUCCION (VM en AWS, detras del ALB):
+#   docker compose -f docker-compose.yml up --build -d
+#   -> SOLO se publica el puerto 8080 (gateway). Las bases de datos y los
+#      servicios internos no tocan la red del host. Nginx NO se levanta (el
+#      ALB lo reemplaza). Requiere un archivo .env con los secretos reales
+#      (ver .env.example).
+#
+# DESARROLLO local:
+#   docker compose up --build
+#   -> Compose carga automaticamente docker-compose.override.yml, que publica
+#      las bases (5433-5436) para inspeccion y permite levantar nginx.
+#
+# OPCIONALES por perfil:
+#   --profile replicas   4 replicas de lectura de PostgreSQL (streaming)
+#   --profile local-lb   Nginx local como balanceador (solo sin ALB)
 # ============================================================================
 
 x-jwt-env: &jwt-env
   JWT_SECRET: ${JWT_SECRET:-mortal-online-dev-secret-0123456789abcdef0123456789abcdef}
 
+# Limite de memoria de cada JVM: permite que los 5 servicios + 4 bases quepan
+# en una instancia de 4GB (t3.medium) sin OOM.
+x-java-mem: &java-mem
+  JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=70.0 -Xmx320m
+
 services:
   # ==========================================================================
-  # BASES DE DATOS — una por microservicio (nunca compartidas) + replica de
-  # lectura. La replica usa replicacion en streaming de bitnami/postgresql;
-  # en produccion esto seria un servicio gestionado con failover automatico.
+  # BASES DE DATOS — una por microservicio (nunca compartidas), con volumen
+  # persistente nombrado. SIN puertos publicados: solo la red interna de
+  # Docker puede alcanzarlas (en produccion, sobre un volumen EBS).
   # ==========================================================================
   auth-db:
     image: bitnamilegacy/postgresql:16
+    restart: unless-stopped
     environment:
       POSTGRESQL_USERNAME: auth
       POSTGRESQL_PASSWORD: auth
@@ -25,13 +42,65 @@ services:
       POSTGRESQL_REPLICATION_MODE: master
       POSTGRESQL_REPLICATION_USER: repl_user
       POSTGRESQL_REPLICATION_PASSWORD: repl_pass
-    ports:
-      - "5433:5432" # expuesto solo para inspeccion en desarrollo
+    expose:
+      - "5432"
     volumes:
       - auth-db-data:/bitnami/postgresql
 
+  lobby-db:
+    image: bitnamilegacy/postgresql:16
+    restart: unless-stopped
+    environment:
+      POSTGRESQL_USERNAME: lobby
+      POSTGRESQL_PASSWORD: lobby
+      POSTGRESQL_DATABASE: lobbydb
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+    expose:
+      - "5432"
+    volumes:
+      - lobby-db-data:/bitnami/postgresql
+
+  combat-db:
+    image: bitnamilegacy/postgresql:16
+    restart: unless-stopped
+    environment:
+      POSTGRESQL_USERNAME: combat
+      POSTGRESQL_PASSWORD: combat
+      POSTGRESQL_DATABASE: combatdb
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+    expose:
+      - "5432"
+    volumes:
+      - combat-db-data:/bitnami/postgresql
+
+  progress-db:
+    image: bitnamilegacy/postgresql:16
+    restart: unless-stopped
+    environment:
+      POSTGRESQL_USERNAME: progress
+      POSTGRESQL_PASSWORD: progress
+      POSTGRESQL_DATABASE: progressdb
+      POSTGRESQL_REPLICATION_MODE: master
+      POSTGRESQL_REPLICATION_USER: repl_user
+      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
+    expose:
+      - "5432"
+    volumes:
+      - progress-db-data:/bitnami/postgresql
+
+  # --------------------------------------------------------------------------
+  # REPLICAS DE LECTURA (opcionales: --profile replicas). Replicacion en
+  # streaming basica; en produccion real seria un servicio gestionado (RDS).
+  # En una VM de 4GB conviene NO levantarlas para dejar RAM a los servicios.
+  # --------------------------------------------------------------------------
   auth-db-replica:
     image: bitnamilegacy/postgresql:16
+    profiles: ["replicas"]
+    restart: unless-stopped
     depends_on: [auth-db]
     environment:
       POSTGRESQL_REPLICATION_MODE: slave
@@ -41,22 +110,10 @@ services:
       POSTGRESQL_REPLICATION_PASSWORD: repl_pass
       POSTGRESQL_PASSWORD: auth
 
-  lobby-db:
-    image: bitnamilegacy/postgresql:16
-    environment:
-      POSTGRESQL_USERNAME: lobby
-      POSTGRESQL_PASSWORD: lobby
-      POSTGRESQL_DATABASE: lobbydb
-      POSTGRESQL_REPLICATION_MODE: master
-      POSTGRESQL_REPLICATION_USER: repl_user
-      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
-    ports:
-      - "5434:5432"
-    volumes:
-      - lobby-db-data:/bitnami/postgresql
-
   lobby-db-replica:
     image: bitnamilegacy/postgresql:16
+    profiles: ["replicas"]
+    restart: unless-stopped
     depends_on: [lobby-db]
     environment:
       POSTGRESQL_REPLICATION_MODE: slave
@@ -66,22 +123,10 @@ services:
       POSTGRESQL_REPLICATION_PASSWORD: repl_pass
       POSTGRESQL_PASSWORD: lobby
 
-  combat-db:
-    image: bitnamilegacy/postgresql:16
-    environment:
-      POSTGRESQL_USERNAME: combat
-      POSTGRESQL_PASSWORD: combat
-      POSTGRESQL_DATABASE: combatdb
-      POSTGRESQL_REPLICATION_MODE: master
-      POSTGRESQL_REPLICATION_USER: repl_user
-      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
-    ports:
-      - "5435:5432"
-    volumes:
-      - combat-db-data:/bitnami/postgresql
-
   combat-db-replica:
     image: bitnamilegacy/postgresql:16
+    profiles: ["replicas"]
+    restart: unless-stopped
     depends_on: [combat-db]
     environment:
       POSTGRESQL_REPLICATION_MODE: slave
@@ -91,22 +136,10 @@ services:
       POSTGRESQL_REPLICATION_PASSWORD: repl_pass
       POSTGRESQL_PASSWORD: combat
 
-  progress-db:
-    image: bitnamilegacy/postgresql:16
-    environment:
-      POSTGRESQL_USERNAME: progress
-      POSTGRESQL_PASSWORD: progress
-      POSTGRESQL_DATABASE: progressdb
-      POSTGRESQL_REPLICATION_MODE: master
-      POSTGRESQL_REPLICATION_USER: repl_user
-      POSTGRESQL_REPLICATION_PASSWORD: repl_pass
-    ports:
-      - "5436:5432"
-    volumes:
-      - progress-db-data:/bitnami/postgresql
-
   progress-db-replica:
     image: bitnamilegacy/postgresql:16
+    profiles: ["replicas"]
+    restart: unless-stopped
     depends_on: [progress-db]
     environment:
       POSTGRESQL_REPLICATION_MODE: slave
@@ -117,63 +150,59 @@ services:
       POSTGRESQL_PASSWORD: progress
 
   # ==========================================================================
-  # MICROSERVICIOS
+  # MICROSERVICIOS — solo accesibles por la red interna de Docker (expose);
+  # el UNICO camino de entrada es el gateway.
   # ==========================================================================
   auth-service:
     build: ./auth-service
+    restart: unless-stopped
     depends_on: [auth-db]
+    expose:
+      - "8081"
     environment:
-      <<: *jwt-env
+      <<: [*jwt-env, *java-mem]
       SPRING_DATASOURCE_URL: jdbc:postgresql://auth-db:5432/authdb
       SPRING_DATASOURCE_USERNAME: auth
       SPRING_DATASOURCE_PASSWORD: auth
       # ------------------------------------------------------------------
-      # CORREO 2FA — VIA RECOMENDADA: API HTTP de Brevo (HTTPS 443, funciona
-      # en redes universitarias que bloquean SMTP). Cuenta gratis en
-      # brevo.com -> verificar remitente -> generar clave (xkeysib-...):
-      #   BREVO_API_KEY=xkeysib-... docker-compose up
-      # ------------------------------------------------------------------
+      # CORREO 2FA — via recomendada: API HTTP de Brevo (HTTPS 443, funciona
+      # en redes que bloquean SMTP). Clave real SIEMPRE via .env:
       BREVO_API_KEY: ${BREVO_API_KEY:-}
       MAIL_FROM: mortalonlineavisos@gmail.com
       # ------------------------------------------------------------------
-      # SMTP (alternativa si la red lo permite; cuenta remitente de avisos).
-      # IMPORTANTE: Gmail NO acepta la contrasena normal de la cuenta para
-      # SMTP — hay que generar una APP PASSWORD (Cuenta de Google ->
-      # Seguridad -> Verificacion en 2 pasos -> Contrasenas de aplicaciones)
-      # y pasarla por la variable de entorno SMTP_PASSWORD:
-      #   SMTP_PASSWORD=<app-password> docker-compose up
-      # El valor por defecto de abajo es SOLO un ejemplo; si el envio falla,
-      # el codigo queda en el log del auth-service como respaldo.
+      # SMTP (alternativa si la red lo permite; app password via .env):
+      # SPRING_MAIL_HOST: smtp.gmail.com
+      # SPRING_MAIL_PORT: "587"
+      # SPRING_MAIL_USERNAME: mortalonlineavisos@gmail.com
+      # SPRING_MAIL_PASSWORD: ${SMTP_PASSWORD:-}
+      # SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
+      # SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
+      # SPRING_MAIL_PROPERTIES_MAIL_SMTP_CONNECTIONTIMEOUT: "5000"
+      # SPRING_MAIL_PROPERTIES_MAIL_SMTP_TIMEOUT: "5000"
+      # SPRING_MAIL_PROPERTIES_MAIL_SMTP_WRITETIMEOUT: "5000"
       # ------------------------------------------------------------------
-      SPRING_MAIL_HOST: smtp.gmail.com
-      SPRING_MAIL_PORT: "587"
-      SPRING_MAIL_USERNAME: mortalonlineavisos@gmail.com
-      SPRING_MAIL_PASSWORD: ${SMTP_PASSWORD:-Cazafantasmas32@}
-      SPRING_MAIL_PROPERTIES_MAIL_SMTP_AUTH: "true"
-      SPRING_MAIL_PROPERTIES_MAIL_SMTP_STARTTLS_ENABLE: "true"
-      # timeouts: si el SMTP no responde, el login no se queda colgado
-      SPRING_MAIL_PROPERTIES_MAIL_SMTP_CONNECTIONTIMEOUT: "5000"
-      SPRING_MAIL_PROPERTIES_MAIL_SMTP_TIMEOUT: "5000"
-      SPRING_MAIL_PROPERTIES_MAIL_SMTP_WRITETIMEOUT: "5000"
-      # confiar en el certificado presentado por smtp.gmail.com aunque un
-      # antivirus/proxy local intercepte el TLS (en un servidor limpio esta
-      # linea se puede quitar)
-      SPRING_MAIL_PROPERTIES_MAIL_SMTP_SSL_TRUST: smtp.gmail.com
 
   lobby-service:
     build: ./lobby-service
+    restart: unless-stopped
     depends_on: [lobby-db]
+    expose:
+      - "8082"
     environment:
-      <<: *jwt-env
+      <<: [*jwt-env, *java-mem]
       SPRING_DATASOURCE_URL: jdbc:postgresql://lobby-db:5432/lobbydb
       SPRING_DATASOURCE_USERNAME: lobby
       SPRING_DATASOURCE_PASSWORD: lobby
+      LOBBY_ROOM_TTL_MINUTES: ${LOBBY_ROOM_TTL_MINUTES:-30}
 
   combat-service:
     build: ./combat-service
+    restart: unless-stopped
     depends_on: [combat-db]
+    expose:
+      - "8083"
     environment:
-      <<: *jwt-env
+      <<: [*jwt-env, *java-mem]
       SPRING_DATASOURCE_URL: jdbc:postgresql://combat-db:5432/combatdb
       SPRING_DATASOURCE_USERNAME: combat
       SPRING_DATASOURCE_PASSWORD: combat
@@ -182,40 +211,46 @@ services:
 
   progress-service:
     build: ./progress-service
+    restart: unless-stopped
     depends_on: [progress-db]
+    expose:
+      - "8084"
     environment:
-      <<: *jwt-env
+      <<: [*jwt-env, *java-mem]
       SPRING_DATASOURCE_URL: jdbc:postgresql://progress-db:5432/progressdb
       SPRING_DATASOURCE_USERNAME: progress
       SPRING_DATASOURCE_PASSWORD: progress
       INTERNAL_API_TOKEN: ${INTERNAL_API_TOKEN:-mortal-online-internal-dev-token}
 
   # ==========================================================================
-  # API GATEWAY (Spring Cloud Gateway) — enruta hacia los microservicios y
-  # valida el JWT antes de enrutar. Para escalar horizontalmente, duplicar
-  # este servicio (api-gateway-2) y descomentar el upstream en nginx.conf.
+  # API GATEWAY — el UNICO puerto publicado al host (el ALB/Nginx apunta aqui;
+  # health check en /actuator/health).
   # ==========================================================================
   api-gateway:
     build: ./api-gateway
+    restart: unless-stopped
     depends_on: [auth-service, lobby-service, combat-service, progress-service]
     environment:
-      <<: *jwt-env
+      <<: [*jwt-env, *java-mem]
       AUTH_SERVICE_URL: http://auth-service:8081
       LOBBY_SERVICE_URL: http://lobby-service:8082
       COMBAT_SERVICE_URL: http://combat-service:8083
       PROGRESS_SERVICE_URL: http://progress-service:8084
     ports:
-      - "8080:8080" # acceso directo en desarrollo (en produccion solo Nginx)
+      - "8080:8080"
 
   # ==========================================================================
-  # NGINX — punto de entrada unico (balanceador de carga).
+  # NGINX — SOLO para entornos sin ALB (--profile local-lb). En AWS el
+  # Application Load Balancer lo reemplaza y este servicio NO se levanta.
   # ==========================================================================
   nginx:
     image: nginx:1.27-alpine
+    profiles: ["local-lb"]
+    restart: unless-stopped
     depends_on: [api-gateway]
     ports:
       - "80:80"
-      # - "443:443" # HTTPS en produccion (ver nginx.conf)
+      # - "443:443" # HTTPS local (ver nginx.conf)
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
 
