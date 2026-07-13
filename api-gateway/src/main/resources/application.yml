@@ -53,8 +53,9 @@ management:
   endpoints:
     web:
       exposure:
-        include: health # /actuator/health para el health check del balanceador
+        include: health # SOLO health; nunca env/beans/configprops (fugarian secretos)
   endpoint:
     health:
       probes:
         enabled: true
+      show-details: never # el health check no revela detalles internos
