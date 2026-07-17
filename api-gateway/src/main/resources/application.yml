@@ -6,37 +6,50 @@ spring:
     name: api-gateway
   cloud:
     gateway:
-      # Cabeceras de seguridad en TODAS las respuestas del API (ademas de las
-      # que ponga el servidor web que sirva el front): anti MIME-sniffing,
-      # anti clickjacking y sin filtrar la URL de origen a terceros.
-      default-filters:
-        - SetResponseHeader=X-Content-Type-Options, nosniff
-        - SetResponseHeader=X-Frame-Options, DENY
-        - SetResponseHeader=Referrer-Policy, strict-origin-when-cross-origin
       routes:
         # ------------------------------------------------------------------
-        # Rutas REST hacia cada microservicio
+        # Rutas REST hacia cada microservicio. Cada una añade las cabeceras de
+        # seguridad (anti MIME-sniffing, anti clickjacking y sin filtrar la URL
+        # de origen). NO se usan default-filters globales: aplicarlos tambien a
+        # las rutas /ws/** rompe el handshake de upgrade del WebSocket.
         # ------------------------------------------------------------------
         - id: auth-service
           uri: ${AUTH_SERVICE_URL:http://localhost:8081}
           predicates:
             - Path=/auth/**
+          filters:
+            - SetResponseHeader=X-Content-Type-Options, nosniff
+            - SetResponseHeader=X-Frame-Options, DENY
+            - SetResponseHeader=Referrer-Policy, strict-origin-when-cross-origin
         - id: lobby-service
           uri: ${LOBBY_SERVICE_URL:http://localhost:8082}
           predicates:
             - Path=/lobby/**
+          filters:
+            - SetResponseHeader=X-Content-Type-Options, nosniff
+            - SetResponseHeader=X-Frame-Options, DENY
+            - SetResponseHeader=Referrer-Policy, strict-origin-when-cross-origin
         - id: combat-service
           uri: ${COMBAT_SERVICE_URL:http://localhost:8083}
           predicates:
             - Path=/combat/**
+          filters:
+            - SetResponseHeader=X-Content-Type-Options, nosniff
+            - SetResponseHeader=X-Frame-Options, DENY
+            - SetResponseHeader=Referrer-Policy, strict-origin-when-cross-origin
         - id: progress-service
           uri: ${PROGRESS_SERVICE_URL:http://localhost:8084}
           predicates:
             - Path=/progress/**
+          filters:
+            - SetResponseHeader=X-Content-Type-Options, nosniff
+            - SetResponseHeader=X-Frame-Options, DENY
+            - SetResponseHeader=Referrer-Policy, strict-origin-when-cross-origin
         # ------------------------------------------------------------------
-        # WebSocket (STOMP): el gateway propaga el upgrade de conexion. La
-        # autenticacion del socket ocurre en el frame CONNECT de STOMP dentro
-        # de cada servicio (ver JwtChannelInterceptor).
+        # WebSocket (STOMP): el gateway propaga el upgrade de conexion SIN
+        # filtros de cabeceras (romperian el handshake 101). La autenticacion
+        # del socket ocurre en el frame CONNECT de STOMP dentro de cada
+        # servicio (ver JwtChannelInterceptor).
         # ------------------------------------------------------------------
         - id: lobby-websocket
           uri: ${LOBBY_SERVICE_URL:http://localhost:8082}
