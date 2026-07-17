@@ -9,17 +9,25 @@ public final class Dtos {
     public record RegisterRequest(String username, String email, String password) {
     }
 
-    public record RegisterResponse(Long id, String username, String email) {
+    /**
+     * El registro deja la cuenta pendiente de VERIFICAR EL CORREO: se envia un
+     * codigo y el cliente pasa directo a la pantalla de verificacion con el
+     * pendingToken (emailHint = correo enmascarado para mostrar en pantalla).
+     */
+    public record RegisterResponse(Long id, String username, String email,
+                                   String pendingToken, String emailHint) {
     }
 
     public record LoginRequest(String username, String password) {
     }
 
     /**
-     * El login correcto NO emite JWT: se envio un codigo al correo registrado
-     * (emailHint = correo enmascarado para mostrar en la pantalla de 2FA).
+     * Cuenta ya verificada -> twoFactorRequired=false y tokens emitidos aqui
+     * mismo (login normal). Cuenta sin verificar -> se envia el codigo al
+     * correo y el cliente debe llamar a verify-2fa con el pendingToken.
      */
-    public record LoginResponse(boolean twoFactorRequired, String pendingToken, String emailHint) {
+    public record LoginResponse(boolean twoFactorRequired, String pendingToken, String emailHint,
+                                TokenResponse tokens) {
     }
 
     public record Verify2faRequest(String pendingToken, String code) {
@@ -36,5 +44,17 @@ public final class Dtos {
 
     /** Nombre publico de un usuario (para el scoreboard y las salas). */
     public record UserSummary(Long id, String username) {
+    }
+
+    // ---- Recuperacion de contrasena ----
+
+    public record ForgotPasswordRequest(String usernameOrEmail) {
+    }
+
+    public record ResetPasswordRequest(String usernameOrEmail, String code, String newPassword) {
+    }
+
+    /** Respuesta generica (no revela si la cuenta existe o no). */
+    public record MessageResponse(String message) {
     }
 }

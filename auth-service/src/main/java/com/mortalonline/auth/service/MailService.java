@@ -56,18 +56,32 @@ public class MailService {
         this.insecureTrust = insecureTrust;
     }
 
+    /** Codigo para VERIFICAR el correo de la cuenta (al registrarse). */
     public void sendLoginCode(String to, String username, String code, long ttlMinutes) {
-        String subject = "Tu codigo de acceso a Mortal Online";
         String text = "Hola " + username + ",\n\n"
                 + "Tu codigo de verificacion es: " + code + "\n\n"
-                + "Expira en " + ttlMinutes + " minutos. Si no intentaste iniciar sesion, ignora este correo.\n\n"
+                + "Expira en " + ttlMinutes + " minutos. Si no creaste esta cuenta, ignora este correo.\n\n"
                 + "— Mortal Online";
+        send(to, username, "Tu codigo de verificacion de Mortal Online", text, "2FA", code);
+    }
+
+    /** Codigo para RECUPERAR la contrasena olvidada. */
+    public void sendResetCode(String to, String username, String code, long ttlMinutes) {
+        String text = "Hola " + username + ",\n\n"
+                + "Tu codigo para cambiar la contrasena es: " + code + "\n\n"
+                + "Expira en " + ttlMinutes + " minutos. Si no pediste cambiarla, ignora este correo:"
+                + " tu contrasena actual sigue siendo valida.\n\n"
+                + "— Mortal Online";
+        send(to, username, "Recupera tu contrasena de Mortal Online", text, "RESET", code);
+    }
+
+    private void send(String to, String username, String subject, String text, String label, String code) {
 
         // 1) API HTTP en la nube (HTTPS 443: pasa cualquier firewall)
         if (!apiKey.isBlank()) {
             try {
                 sendViaApi(to, username, subject, text);
-                log.info("Codigo 2FA enviado por correo (API) a {}", to);
+                log.info("Codigo {} enviado por correo (API) a {}", label, to);
                 return;
             } catch (Exception e) {
                 log.error("Fallo el envio por API a {}: {}", to, e.getMessage());
@@ -84,15 +98,15 @@ public class MailService {
                 message.setSubject(subject);
                 message.setText(text);
                 smtp.send(message);
-                log.info("Codigo 2FA enviado por correo (SMTP) a {}", to);
+                log.info("Codigo {} enviado por correo (SMTP) a {}", label, to);
                 return;
             } catch (Exception e) {
                 log.error("Fallo el envio por SMTP a {}: {}", to, e.getMessage());
             }
         }
 
-        // 3) Respaldo: el operador puede leer el codigo del log (no bloquear el login)
-        log.warn("Correo NO enviado. Codigo 2FA para {} <{}>: {}", username, to, code);
+        // 3) Respaldo: el operador puede leer el codigo del log (no bloquear el flujo)
+        log.warn("Correo NO enviado. Codigo {} para {} <{}>: {}", label, username, to, code);
     }
 
     /** POST a la API transaccional de Brevo (o compatible via mail.api.url). */

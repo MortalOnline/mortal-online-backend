@@ -6,6 +6,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.Optional;
 
 public interface EmailOtpRepository extends JpaRepository<EmailOtp, Long> {
-    Optional<EmailOtp> findFirstByUserIdOrderByIdDesc(Long userId);
-    void deleteByUserId(Long userId);
+    Optional<EmailOtp> findFirstByUserIdAndPurposeOrderByIdDesc(Long userId, String purpose);
+    void deleteByUserIdAndPurpose(Long userId, String purpose);
 }

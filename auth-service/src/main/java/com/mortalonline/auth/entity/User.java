@@ -25,6 +25,14 @@ public class User {
     @Column(nullable = false, length = 100)
     private String passwordHash;
 
+    /**
+     * Correo verificado con el codigo enviado AL REGISTRARSE. La verificacion
+     * se hace UNA sola vez; despues el login es directo (usuario + contrasena).
+     */
+    @Column(nullable = false)
+    @org.hibernate.annotations.ColumnDefault("false")
+    private boolean emailVerified = false;
+
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
 
@@ -41,5 +49,9 @@ public class User {
     public String getUsername() { return username; }
     public String getEmail() { return email; }
     public String getPasswordHash() { return passwordHash; }
+    public boolean isEmailVerified() { return emailVerified; }
     public Instant getCreatedAt() { return createdAt; }
+
+    public void markEmailVerified() { this.emailVerified = true; }
+    public void changePassword(String newHash) { this.passwordHash = newHash; }
 }

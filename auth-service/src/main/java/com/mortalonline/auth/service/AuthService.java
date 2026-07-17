@@ -22,12 +22,15 @@ import java.time.Instant;
 import java.util.Base64;
 
 /**
- * Flujo de autenticacion completo (verificacion de dos pasos por CORREO):
- *   register (correo + contrasena BCrypt)
- *   -> login: si la contrasena es correcta, se ENVIA UN CODIGO DE 6 DIGITOS
- *      al correo registrado (no se emite el JWT todavia)
- *   -> verify-2fa: valida el codigo recibido por correo y emite el JWT.
- * El codigo expira, es de un solo uso y admite maximo 5 intentos.
+ * Flujo de autenticacion completo (verificacion de correo UNA sola vez):
+ *   register (correo + contrasena BCrypt) -> se envia un CODIGO DE 6 DIGITOS
+ *      al correo para VERIFICARLO
+ *   -> verify-2fa: valida el codigo, marca el correo como verificado y emite
+ *      el JWT (la cuenta queda lista y el usuario dentro).
+ *   -> login: con el correo ya verificado es DIRECTO (usuario + contrasena);
+ *      si la cuenta aun no verifico su correo, se reenvia el codigo.
+ * Ademas: recuperacion de contrasena con codigo por correo (forgot/reset).
+ * Todo codigo expira, es de un solo uso y admite maximo 5 intentos.
  */
 @Service
 public class AuthService {
@@ -79,12 +82,16 @@ public class AuthService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "El correo ya esta registrado");
         }
         User user = users.save(new User(req.username().trim(), req.email(), passwordEncoder.encode(req.password())));
-        return new Dtos.RegisterResponse(user.getId(), user.getUsername(), user.getEmail());
+        // la verificacion del correo se hace UNA vez, aqui al registrarse:
+        // se envia el codigo y el cliente pasa directo a la pantalla de codigo
+        String pendingToken = sendVerificationCode(user);
+        return new Dtos.RegisterResponse(user.getId(), user.getUsername(), user.getEmail(),
+                pendingToken, maskEmail(user.getEmail()));
     }
 
     /**
-     * Paso 1 del login: valida la contrasena y, si es correcta, envia el
-     * codigo de verificacion AL CORREO registrado. El JWT NO se emite aqui.
+     * Login: valida la contrasena. Correo ya verificado -> emite el JWT
+     * directamente. Correo sin verificar -> reenvia el codigo de verificacion.
      */
     @Transactional
     public Dtos.LoginResponse login(Dtos.LoginRequest req) {
@@ -100,16 +107,23 @@ public class AuthService {
             throw badCredentials();
         }
         loginAttempts.reset(req.username()); // contraseña correcta
-        String code = String.format("%06d", random.nextInt(1_000_000));
-        otps.deleteByUserId(user.getId()); // un solo codigo vigente por usuario
-        otps.save(new EmailOtp(user.getId(), code, Instant.now().plus(otpTtl)));
-        mail.sendLoginCode(user.getEmail(), user.getUsername(), code, otpTtl.toMinutes());
-        return new Dtos.LoginResponse(true,
-                jwt.createPending2faToken(user.getId(), user.getUsername()),
-                maskEmail(user.getEmail()));
+        if (user.isEmailVerified()) {
+            return new Dtos.LoginResponse(false, null, null, issueTokens(user));
+        }
+        // cuenta que nunca verifico su correo (o creada antes de este flujo)
+        String pendingToken = sendVerificationCode(user);
+        return new Dtos.LoginResponse(true, pendingToken, maskEmail(user.getEmail()), null);
     }
 
-    /** Paso 2: valida el codigo que llego al correo y emite el JWT. */
+    private String sendVerificationCode(User user) {
+        String code = String.format("%06d", random.nextInt(1_000_000));
+        otps.deleteByUserIdAndPurpose(user.getId(), EmailOtp.PURPOSE_VERIFY); // un solo codigo vigente
+        otps.save(new EmailOtp(user.getId(), code, EmailOtp.PURPOSE_VERIFY, Instant.now().plus(otpTtl)));
+        mail.sendLoginCode(user.getEmail(), user.getUsername(), code, otpTtl.toMinutes());
+        return jwt.createPending2faToken(user.getId(), user.getUsername());
+    }
+
+    /** Valida el codigo de verificacion, marca el correo verificado y emite el JWT. */
     @Transactional
     public Dtos.TokenResponse verify2fa(Dtos.Verify2faRequest req) {
         Claims claims = parseOrUnauthorized(req.pendingToken());
@@ -119,24 +133,76 @@ public class AuthService {
         User user = users.findById(Long.valueOf(claims.getSubject()))
                 .orElseThrow(AuthService::badCredentials);
 
-        EmailOtp otp = otps.findFirstByUserIdOrderByIdDesc(user.getId())
+        consumeOtp(user, EmailOtp.PURPOSE_VERIFY, req.code(), "inicia sesion de nuevo");
+        user.markEmailVerified(); // desde ahora el login es directo
+        users.save(user);
+        return issueTokens(user);
+    }
+
+    // ---- Recuperacion de contrasena ----
+
+    /**
+     * Paso 1: envia un codigo de recuperacion al correo de la cuenta. La
+     * respuesta es SIEMPRE la misma exista o no la cuenta (no filtrar cuales
+     * usuarios/correos estan registrados).
+     */
+    @Transactional
+    public Dtos.MessageResponse forgotPassword(Dtos.ForgotPasswordRequest req) {
+        findByUsernameOrEmail(req.usernameOrEmail()).ifPresent(user -> {
+            String code = String.format("%06d", random.nextInt(1_000_000));
+            otps.deleteByUserIdAndPurpose(user.getId(), EmailOtp.PURPOSE_RESET);
+            otps.save(new EmailOtp(user.getId(), code, EmailOtp.PURPOSE_RESET, Instant.now().plus(otpTtl)));
+            mail.sendResetCode(user.getEmail(), user.getUsername(), code, otpTtl.toMinutes());
+        });
+        return new Dtos.MessageResponse(
+                "Si la cuenta existe, enviamos un codigo de recuperacion a su correo");
+    }
+
+    /**
+     * Paso 2: con el codigo que llego al correo, cambia la contrasena. Solo
+     * quien tiene acceso a ese correo puede hacerlo (el codigo expira, es de
+     * un solo uso y admite 5 intentos). Cierra todas las sesiones abiertas.
+     */
+    @Transactional
+    public Dtos.MessageResponse resetPassword(Dtos.ResetPasswordRequest req) {
+        if (req.newPassword() == null || req.newPassword().length() < 6) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La contrasena debe tener al menos 6 caracteres");
+        }
+        User user = findByUsernameOrEmail(req.usernameOrEmail())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Codigo incorrecto"));
+        consumeOtp(user, EmailOtp.PURPOSE_RESET, req.code(), "pide un codigo nuevo");
+        user.changePassword(passwordEncoder.encode(req.newPassword()));
+        users.save(user);
+        refreshTokens.deleteByUserId(user.getId()); // cerrar sesiones abiertas
+        loginAttempts.reset(user.getUsername()); // desbloquear si estaba bloqueada
+        return new Dtos.MessageResponse("Contrasena actualizada; ya puedes iniciar sesion");
+    }
+
+    private java.util.Optional<User> findByUsernameOrEmail(String id) {
+        if (id == null || id.isBlank()) return java.util.Optional.empty();
+        String value = id.trim();
+        return users.findByUsername(value).or(() -> users.findByEmail(value));
+    }
+
+    /** Validacion comun de un codigo (existencia, expiracion, intentos, valor). */
+    private void consumeOtp(User user, String purpose, String code, String retryHint) {
+        EmailOtp otp = otps.findFirstByUserIdAndPurposeOrderByIdDesc(user.getId(), purpose)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
-                        "No hay un codigo vigente; inicia sesion de nuevo"));
+                        "No hay un codigo vigente; " + retryHint));
         if (otp.getExpiresAt().isBefore(Instant.now())) {
             otps.delete(otp);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "El codigo expiro; inicia sesion de nuevo");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "El codigo expiro; " + retryHint);
         }
         if (otp.getAttempts() >= MAX_OTP_ATTEMPTS) {
             otps.delete(otp);
-            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Demasiados intentos; inicia sesion de nuevo");
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Demasiados intentos; " + retryHint);
         }
-        if (req.code() == null || !otp.getCode().equals(req.code().trim())) {
+        if (code == null || !otp.getCode().equals(code.trim())) {
             otp.registerFailedAttempt();
             otps.save(otp);
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Codigo incorrecto");
         }
         otps.delete(otp); // un solo uso
-        return issueTokens(user);
     }
 
     @Transactional
