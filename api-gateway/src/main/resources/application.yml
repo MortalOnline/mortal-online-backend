@@ -6,6 +6,13 @@ spring:
     name: api-gateway
   cloud:
     gateway:
+      # Cabeceras de seguridad en TODAS las respuestas del API (ademas de las
+      # que ponga el servidor web que sirva el front): anti MIME-sniffing,
+      # anti clickjacking y sin filtrar la URL de origen a terceros.
+      default-filters:
+        - SetResponseHeader=X-Content-Type-Options, nosniff
+        - SetResponseHeader=X-Frame-Options, DENY
+        - SetResponseHeader=Referrer-Policy, strict-origin-when-cross-origin
       routes:
         # ------------------------------------------------------------------
         # Rutas REST hacia cada microservicio
