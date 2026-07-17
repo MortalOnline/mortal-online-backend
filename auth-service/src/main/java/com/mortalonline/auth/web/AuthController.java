@@ -37,6 +37,18 @@ public class AuthController {
         return auth.refresh(req);
     }
 
+    /** Recuperacion de contrasena: envia un codigo al correo de la cuenta. */
+    @PostMapping("/forgot-password")
+    public Dtos.MessageResponse forgotPassword(@RequestBody Dtos.ForgotPasswordRequest req) {
+        return auth.forgotPassword(req);
+    }
+
+    /** Cambia la contrasena con el codigo recibido por correo. */
+    @PostMapping("/reset-password")
+    public Dtos.MessageResponse resetPassword(@RequestBody Dtos.ResetPasswordRequest req) {
+        return auth.resetPassword(req);
+    }
+
     /** Datos del usuario autenticado (requiere JWT valido con scope access). */
     @GetMapping("/me")
     public Dtos.MeResponse me(Principal principal) {

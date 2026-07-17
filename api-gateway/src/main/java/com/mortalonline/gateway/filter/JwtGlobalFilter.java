@@ -35,7 +35,8 @@ public class JwtGlobalFilter implements GlobalFilter, Ordered {
      *    servicio (JwtChannelInterceptor).
      */
     private static final List<String> PUBLIC_PREFIXES = List.of(
-            "/auth/register", "/auth/login", "/auth/verify-2fa", "/auth/refresh", "/ws/",
+            "/auth/register", "/auth/login", "/auth/verify-2fa", "/auth/refresh",
+            "/auth/forgot-password", "/auth/reset-password", "/ws/",
             "/actuator/health"); // health check del balanceador de carga
 
     private final SecretKey key;
