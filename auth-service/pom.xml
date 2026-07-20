@@ -26,6 +26,16 @@
     <sonar.projectKey>MortalOnline_mortal-online-backend</sonar.projectKey>
     <sonar.projectName>Mortal Online - auth-service</sonar.projectName>
     <sonar.coverage.jacoco.xmlReportPaths>${project.basedir}/target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
+    <!-- Cobertura solo sobre la logica de negocio. Se excluyen: arranque de
+         Spring, configuracion de framework, DTOs (records) y entidades JPA
+         (datos), que no se prueban unitariamente. -->
+    <sonar.coverage.exclusions>
+      **/AuthServiceApplication.java,
+      **/config/**,
+      **/security/SecurityConfig.java,
+      **/web/Dtos.java,
+      **/entity/**
+    </sonar.coverage.exclusions>
   </properties>
 
   <dependencies>

@@ -9,14 +9,11 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
 
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.TrustManager;
-import javax.net.ssl.X509TrustManager;
+import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.security.cert.X509Certificate;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -29,6 +26,10 @@ import java.util.Map;
  *     bloquear el SMTP saliente (587/465) como medida antispam.
  *  2) SMTP clasico (spring-mail) — si hay servidor configurado y la red lo permite.
  *  3) Respaldo: el codigo queda en el log del servicio (desarrollo/emergencia).
+ *
+ * Nota TLS: la conexion HTTPS valida siempre el certificado del servidor. Si en
+ * una maquina de desarrollo un antivirus/proxy intercepta TLS, la CA corporativa
+ * debe importarse al truststore de la JVM (nunca se desactiva la validacion).
  */
 @Service
 public class MailService {
@@ -40,20 +41,19 @@ public class MailService {
     private final String from;
     private final String apiKey;
     private final String apiUrl;
-    private final boolean insecureTrust;
-    private volatile HttpClient httpClient;
+    private final HttpClient httpClient;
 
     public MailService(ObjectProvider<JavaMailSender> smtpProvider, ObjectMapper json,
                        @Value("${security.otp.mail-from:no-reply@mortalonline.gg}") String from,
                        @Value("${mail.api.key:}") String apiKey,
-                       @Value("${mail.api.url:https://api.brevo.com/v3/smtp/email}") String apiUrl,
-                       @Value("${mail.api.insecure-trust:false}") boolean insecureTrust) {
+                       @Value("${mail.api.url:https://api.brevo.com/v3/smtp/email}") String apiUrl) {
         this.smtpProvider = smtpProvider;
         this.json = json;
         this.from = from;
         this.apiKey = apiKey == null ? "" : apiKey.trim();
         this.apiUrl = apiUrl;
-        this.insecureTrust = insecureTrust;
+        // cliente HTTP unico e inmutable (thread-safe); valida el certificado TLS
+        this.httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8)).build();
     }
 
     /** Codigo para VERIFICAR el correo de la cuenta (al registrarse). */
@@ -76,15 +76,17 @@ public class MailService {
     }
 
     private void send(String to, String username, String subject, String text, String label, String code) {
-
         // 1) API HTTP en la nube (HTTPS 443: pasa cualquier firewall)
         if (!apiKey.isBlank()) {
             try {
                 sendViaApi(to, username, subject, text);
                 log.info("Codigo {} enviado por correo (API) a {}", label, to);
                 return;
-            } catch (Exception e) {
+            } catch (IOException | RuntimeException e) {
                 log.error("Fallo el envio por API a {}: {}", to, e.getMessage());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); // preservar el flag de interrupcion
+                log.error("Envio por API interrumpido para {}", to);
             }
         }
 
@@ -100,7 +102,7 @@ public class MailService {
                 smtp.send(message);
                 log.info("Codigo {} enviado por correo (SMTP) a {}", label, to);
                 return;
-            } catch (Exception e) {
+            } catch (RuntimeException e) {
                 log.error("Fallo el envio por SMTP a {}: {}", to, e.getMessage());
             }
         }
@@ -110,7 +112,8 @@ public class MailService {
     }
 
     /** POST a la API transaccional de Brevo (o compatible via mail.api.url). */
-    private void sendViaApi(String to, String username, String subject, String text) throws Exception {
+    private void sendViaApi(String to, String username, String subject, String text)
+            throws IOException, InterruptedException {
         Map<String, Object> body = Map.of(
                 "sender", Map.of("name", "Mortal Online", "email", from),
                 "to", List.of(Map.of("email", to, "name", username)),
@@ -123,28 +126,9 @@ public class MailService {
                 .header("Accept", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)))
                 .build();
-        HttpResponse<String> response = client().send(request, HttpResponse.BodyHandlers.ofString());
+        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
         if (response.statusCode() >= 300) {
             throw new IllegalStateException("HTTP " + response.statusCode() + " — " + response.body());
         }
-    }
-
-    private HttpClient client() throws Exception {
-        if (httpClient == null) {
-            HttpClient.Builder builder = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(8));
-            if (insecureTrust) {
-                // SOLO desarrollo: maquinas con antivirus/proxy que intercepta TLS
-                // (el certificado presentado no es el real y la JVM lo rechazaria)
-                SSLContext ctx = SSLContext.getInstance("TLS");
-                ctx.init(null, new TrustManager[]{new X509TrustManager() {
-                    public void checkClientTrusted(X509Certificate[] c, String a) { }
-                    public void checkServerTrusted(X509Certificate[] c, String a) { }
-                    public X509Certificate[] getAcceptedIssuers() { return new X509Certificate[0]; }
-                }}, null);
-                builder.sslContext(ctx);
-            }
-            httpClient = builder.build();
-        }
-        return httpClient;
     }
 }

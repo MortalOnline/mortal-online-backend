@@ -30,7 +30,7 @@ import java.util.Base64;
  *   -> login: con el correo ya verificado es DIRECTO (usuario + contrasena);
  *      si la cuenta aun no verifico su correo, se reenvia el codigo.
  * Ademas: recuperacion de contrasena con codigo por correo (forgot/reset).
- * Todo codigo expira, es de un solo uso y admite maximo 5 intentos.
+ * Cada codigo expira, es de un solo uso y admite maximo 5 intentos.
  */
 @Service
 public class AuthService {
