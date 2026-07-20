@@ -19,6 +19,13 @@
 
   <properties>
     <java.version>17</java.version>
+    <!-- SonarCloud: AJUSTA organization y projectKey a los que te muestre
+         SonarCloud al importar el repo (por defecto usa MortalOnline_<repo>). -->
+    <sonar.host.url>https://sonarcloud.io</sonar.host.url>
+    <sonar.organization>mortalonline</sonar.organization>
+    <sonar.projectKey>MortalOnline_mortal-online-backend</sonar.projectKey>
+    <sonar.projectName>Mortal Online - auth-service</sonar.projectName>
+    <sonar.coverage.jacoco.xmlReportPaths>${project.basedir}/target/site/jacoco/jacoco.xml</sonar.coverage.jacoco.xmlReportPaths>
   </properties>
 
   <dependencies>
@@ -78,6 +85,26 @@
       <plugin>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+      <!-- Cobertura de pruebas para SonarCloud (genera target/site/jacoco/jacoco.xml) -->
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+        <version>0.8.12</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>prepare-agent</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>report</id>
+            <phase>test</phase>
+            <goals>
+              <goal>report</goal>
+            </goals>
+          </execution>
+        </executions>
       </plugin>
     </plugins>
   </build>

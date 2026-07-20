@@ -1,0 +1,52 @@
+name: SonarCloud
+
+# Analisis estatico de calidad de codigo (SonarCloud) sobre auth-service, que
+# es el modulo con pruebas y cobertura (JaCoCo). Complementa al workflow ci.yml
+# (compilacion + pruebas) con el "quality gate" de la rubrica.
+#
+# IMPORTANTE: mientras no exista el secreto SONAR_TOKEN, el analisis se OMITE
+# de forma limpia (termina en verde) para no romper el estado del repo. En
+# cuanto agregues el token en Settings > Secrets and variables > Actions, el
+# analisis real corre solo.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  sonarcloud:
+    name: Análisis SonarCloud (auth-service)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Sonar necesita el historial completo (blame)
+
+      - name: Configurar JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Cachear paquetes de SonarCloud
+        uses: actions/cache@v4
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
+
+      - name: Analizar (o omitir si falta el token)
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo "::warning::SONAR_TOKEN no configurado todavia — se omite el analisis."
+            echo "Agrega el secreto en: Settings > Secrets and variables > Actions > New repository secret (SONAR_TOKEN)."
+            exit 0
+          fi
+          mvn -B -ntp -f auth-service/pom.xml verify \
+            org.sonarsource.scanner.maven:sonar-maven-plugin:sonar
