@@ -1,0 +1,90 @@
+name: CD (Elastic Beanstalk)
+
+# Despliegue continuo a AWS Elastic Beanstalk (plataforma Docker, Amazon Linux
+# 2023). Empaqueta el backend (docker-compose + fuentes) y lo publica como una
+# nueva version del entorno.
+#
+# DISPARO MANUAL a proposito: produccion corre con 1 instancia (min=max=1), asi
+# que TU decides cuando desplegar (evita tumbar el sitio en un momento critico).
+# Para CD automatico en cada push, descomenta el bloque 'push' de abajo.
+#
+# REQUISITOS (los configura quien administre AWS — ver prompt de despliegue):
+#   - Secretos de repo: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (usuario IAM
+#     con permisos de Elastic Beanstalk + S3).
+#   - Ajustar AWS_REGION, EB_APPLICATION y EB_ENVIRONMENT a los nombres reales.
+#   - El entorno EB debe tener las "environment properties" (JWT_SECRET,
+#     BREVO_API_KEY, INTERNAL_API_TOKEN, SMTP_PASSWORD, LOBBY_ROOM_TTL_MINUTES):
+#     el zip NO incluye .env con secretos, por diseno.
+on:
+  workflow_dispatch:
+    inputs:
+      confirmar:
+        description: 'Escribe DESPLEGAR para confirmar el deploy a PRODUCCION'
+        required: true
+        default: ''
+  # push:
+  #   branches: [ main ]   # descomentar para CD automatico en cada push
+
+env:
+  AWS_REGION: us-east-1                      # <-- verifica tu region (la IP prod esta en us-east-1)
+  EB_APPLICATION: mortal-online-backend      # <-- nombre EXACTO de tu Application en EB
+  EB_ENVIRONMENT: mortal-online-backend-env  # <-- nombre EXACTO de tu Environment en EB
+
+jobs:
+  deploy:
+    name: Empaquetar y desplegar a Elastic Beanstalk
+    # solo corre si se confirma explicitamente (protege produccion)
+    if: ${{ github.event_name == 'push' || github.event.inputs.confirmar == 'DESPLEGAR' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verificar credenciales AWS
+        env:
+          AWS_KEY: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        run: |
+          if [ -z "$AWS_KEY" ]; then
+            echo "::error::Faltan los secretos AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY."
+            echo "Agregalos en Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+
+      - name: Empaquetar el backend (docker-compose + fuentes, sin .env)
+        run: python make_zip.py backend-deploy.zip
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Subir version y desplegar en Elastic Beanstalk
+        run: |
+          set -euo pipefail
+          VERSION="gh-${{ github.run_number }}-${GITHUB_SHA::7}"
+          BUCKET=$(aws elasticbeanstalk create-storage-location --query S3Bucket --output text)
+          KEY="mortal-online/${VERSION}.zip"
+          echo "Subiendo bundle a s3://$BUCKET/$KEY"
+          aws s3 cp backend-deploy.zip "s3://$BUCKET/$KEY"
+          aws elasticbeanstalk create-application-version \
+            --application-name "$EB_APPLICATION" \
+            --version-label "$VERSION" \
+            --source-bundle S3Bucket="$BUCKET",S3Key="$KEY" \
+            --auto-create-application
+          echo "Desplegando $VERSION en $EB_ENVIRONMENT ..."
+          aws elasticbeanstalk update-environment \
+            --environment-name "$EB_ENVIRONMENT" \
+            --version-label "$VERSION"
+          aws elasticbeanstalk wait environment-updated \
+            --environment-name "$EB_ENVIRONMENT"
+          echo "Despliegue completado."
+
+      - name: Verificar salud tras el deploy
+        run: |
+          STATUS=$(aws elasticbeanstalk describe-environments \
+            --environment-names "$EB_ENVIRONMENT" \
+            --query "Environments[0].Health" --output text)
+          echo "Health del entorno: $STATUS"
+          test "$STATUS" = "Green" || echo "::warning::El entorno no quedo en Green ($STATUS); revisa la consola de EB."
