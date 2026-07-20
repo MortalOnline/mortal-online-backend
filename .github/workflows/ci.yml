@@ -1,0 +1,45 @@
+name: CI
+
+# Integracion continua: en cada push/PR a main, compila y PRUEBA los 5
+# microservicios. auth-service ademas ejecuta los tests unitarios (JUnit 5 +
+# Mockito). El estado de este workflow es el que muestra el badge del README.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: Build & test (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - api-gateway
+          - auth-service
+          - lobby-service
+          - combat-service
+          - progress-service
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: maven
+
+      - name: Compilar, probar y empaquetar ${{ matrix.service }}
+        run: mvn -B -ntp -f ${{ matrix.service }}/pom.xml package
+
+      - name: Publicar reportes de pruebas (${{ matrix.service }})
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-${{ matrix.service }}
+          path: ${{ matrix.service }}/target/surefire-reports/
+          if-no-files-found: ignore

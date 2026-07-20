@@ -1,5 +1,7 @@
 # Mortal Online — Backend (Microservicios)
 
+[![CI](https://github.com/MortalOnline/mortal-online-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/MortalOnline/mortal-online-backend/actions/workflows/ci.yml)
+
 Backend de **Mortal Online** (recreación web de Mortal Kombat 1). Originalmente
 planeado como monolito, migrado a **microservicios** manteniendo el principio de
 **cliente gordo**: el juego (físicas, hitboxes, animaciones) corre 100% en el
